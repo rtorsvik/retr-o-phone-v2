@@ -13,14 +13,15 @@ These are the components i used for the project
 - Twin sim card, with the same phone number as my normal mobile phone, such that i can use the rotary phone in parallel
 - Microphone (https://www.adafruit.com/product/1064)
 - Speaker (https://www.adafruit.com/product/1890)
-- Buzzer of some kind to create ring tone
+- Buzzer (https://www.adafruit.com/product/1536)
+- Battery indicator led (https://www.adafruit.com/product/159)
 - Switch for hanging up when conversations get boring (https://www.adafruit.com/product/819)
 - Bread board (https://www.adafruit.com/product/64)
 - Couple of breadboard wires
 - pin headers
 - USB-C panel mount cable for charging and programming (https://www.adafruit.com/product/4056)
 
-
+The whole thing should cost about $100
 
 # Schematic
 
@@ -28,5 +29,5 @@ These are the components i used for the project
 
 # Resources
 
-https://learn.adafruit.com/adafruit-feather-32u4-fona?view=all
-https://www.finn.no/bap/forsale/search.html?search_type=SEARCH_ID_BAP_ALL&q=televerket%20telefon
+- https://learn.adafruit.com/adafruit-feather-32u4-fona?view=all
+- https://www.finn.no/bap/forsale/search.html?search_type=SEARCH_ID_BAP_ALL&q=televerket%20telefon
