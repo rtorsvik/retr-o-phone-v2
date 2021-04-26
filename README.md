@@ -1,12 +1,12 @@
 # rotary-dial-mobile
-How to revie an old retro phone and turn it in to a functioning "mobile" phone with a battery and sim card, using an Adafruit Feather 32u4 FONA
+How to revive an old retro phone and turn it in to a functioning "mobile" phone with a battery and sim card, using an Adafruit Feather 32u4 FONA
 
 ![image of phone](/doc/phone.jpg)
 
 # Equipment
 These are the components i used for the project
 
-- Old rotary dial phone from 'Elektrisk Berau', as shown in the image above
+- Old rotary dial phone from 'Elektrisk Bureau', as shown in the image above
 - Adafruit Feather 32u4 FONA (https://www.adafruit.com/product/3027)
 - LiPo battery (https://www.adafruit.com/product/258)
 - Antenna (https://www.adafruit.com/product/3237)
