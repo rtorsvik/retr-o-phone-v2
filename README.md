@@ -27,6 +27,26 @@ The whole thing should cost about $100
 
 ![schematic](/doc/schematic.png)
 
+# How to get started
+
+Follow the guide from Adafruit on how to set up the feather FONA board. Link is in the Resources section below.
+
+Connect everything as shown in the schematic
+
+Download this project from github and upload it to your FONA
+
+You will also have to set your SIM card pin number in the code, here:
+![simpin](/doc/simpin.png)
+
+Connect to power, and call one of your friends to ask if they would like to hang out, like you used to do after school, 20 years ago.
+
+# Arduino libraries
+
+You will need the following libraries. They can be downloaded from your Arduino IDE
+
+- Adafruit_FONA.h
+- SoftwareSerial
+
 # Resources
 
 - https://learn.adafruit.com/adafruit-feather-32u4-fona?view=all
