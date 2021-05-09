@@ -1,4 +1,4 @@
-# rotary-dial-mobile
+# retr-o-phone-v2
 How to revive an old retro phone and turn it in to a functioning "mobile" phone with a battery and sim card, using an Adafruit Feather 32u4 FONA
 
 ![image of phone](/doc/phone.jpg)
