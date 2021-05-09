@@ -1,7 +1,11 @@
-/*
- *
+/* This repository enables you to use an old rotary dial house telephone as a mobile phone.
  * 
- * @author: Rein Åsmund Torsvik
+ * Follow the instruction on https://github.com/rtorsvik/retr-o-phone-v2 to build your own
+ * And, remember to put in your SIM card PIN number, and your default country code in the //definitions below
+ * 
+ * Per today, buzzer functionality is not implemented
+ * 
+ * @author: Rein Åsmund Torsvik, 2021-05-09
  */
 
 //include
@@ -12,10 +16,13 @@
 
 //definitions
 //____________________________________________________________________________________________________
-char SIM_PIN[4] = "7515";
+char SIM_PIN[4] = "1234"; //enter your SIM card pin number here
+String default_country_code_str = "47"; //NOR
 
-#define DEBOUNCEDELAY 50 //[ms]
+#define DEBOUNCEDELAY 10 //[ms]
 #define T_IDLE_BEFORE_CALLING 4000 //[ms] millieconds after last dialed number before initiating call
+
+#define DEBUG true
 
 //pinout
 //____________________________________________________________________________________________________
@@ -40,13 +47,6 @@ Adafruit_FONA fona = Adafruit_FONA(PIN_FONA_RST);
 
 //variables
 //____________________________________________________________________________________________________
-//debouncing
-bool pin_pulse_state = false;
-bool pin_pulse_state_prev = false;
-long pin_pulse_ms_last = 0;
-
-bool pin_counting_state = false;
-bool pin_counting_state_prev = false;
 
 //fona
 char replybuffer[255];
@@ -56,24 +56,47 @@ bool incoming_call = false;
 long incoming_call_timeout = 0;
 
 
-//others
-int mode = 0; //0=standby/hangup, 1=dialing, 2=calling
-bool dialing = false;
-bool ready_to_call = false;
+//state handling variables
+enum phone_state {
+    IDLE,
+    DIALING,
+    CALLING,
+    INCOMINGCALL
+};
+phone_state state = IDLE;
 
+bool idle_setup_complete = false;
+bool dialing_setup_complete = false;
+bool calling_setup_complete = false;
+bool incomingcall_setup_complete = false;
+
+//debouncing
+bool pin_pulse_state = false;
+bool pin_pulse_state_prev = false;
+long pin_pulse_ms_last = 0;
+
+bool pin_counting_state = false;
+bool pin_counting_state_prev = false;
+long pin_counting_ms_last = 0;
+
+//dialing variables
 bool pulse = false;
 bool counting = false;
-int number = 10;
+int number = 0;
+
+int phone_number[16];
+int phone_number_index = 0;
 
 long last_time_counting = 0; 
 
-int phone_number[16];
-int phone_number_pointer = 0;
-
-String default_country_code_str = "47"; //NOR
+//phone number variables
 String phone_number_str = "";
+char incoming_phone_number[32] = {0};
 
-long cnt = 0;
+//others
+long call_status_ms_last = 0;
+int cnt = 0;
+
 
 
 
@@ -146,8 +169,10 @@ void setup() {
       Serial.println(F("Initializing FONA...\tCaller id notification enabled."));
     else
       Serial.println(F("Initializing FONA...\tCaller id notification disabled"));
-    
-    //attachInterrupt(digitalPinToInterrupt(PIN_FONA_RI_INTERRUPT), fitta, CHANGE);
+
+    //attachInterrupt(digitalPinToInterrupt(PIN_FONA_RI_INTERRUPT), test_high, RISING);
+    //attachInterrupt(digitalPinToInterrupt(PIN_FONA_RI_INTERRUPT), test_low, FALLING);
+
 
     //report battery
     uint16_t vbat;
@@ -174,7 +199,7 @@ void setup() {
     Serial.println(volume);
 
     fona.setVolume(50);
-    fona.write("AT+CMEDIAVOL=100");
+    fona.write("AT+CMEDIAVOL=50");
 
     Serial.println(F("Initializing FONA...\t[SUCCESS] FONA initialized"));
   }
@@ -189,278 +214,277 @@ void setup() {
 
 //loop
 //____________________________________________________________________________________________________
-void loop() 
+void loop()
 {
-
-  /*
-  while (Serial.available()) 
-  {
-    delay(1);
-    fona.write(Serial.read());
-  }
-
-  
-  if (fona.available()) {
-    Serial.write(fona.read());
-  }
-  */
-  
-
-  cnt++;
-  
-
-  //handle modes
-  //mode=standby
-  if(!digitalRead(PIN_HANGUP) == HIGH)
-  {
-    //do once
-    if(mode != 0)
+    //state handling
+    switch (state)
     {
-      mode = 0;
+        case IDLE:
+            //idle setup
+            if(!idle_setup_complete)
+            {
+                dialing_setup_complete = false;
+                calling_setup_complete = false;
+                incomingcall_setup_complete = false;
 
-      //hang up
-      Serial.println("Hanging up");
-      fona.hangUp();
+                //hang up
+                Serial.println("[info] Hanging up");
+                fona.hangUp();
 
-      //stop playing dial tone
-      fona.playToolkitTone(1, 10);
-      fona.setPWM(2000, 0);
-      
-      //reset variables
-      for(int i=0; i<16; i++)
-        phone_number[i] = 0;
-      phone_number_pointer = 0;
-      phone_number_str = "";
-      ready_to_call = false;
-      incoming_call=false;
+                //stop playing dial tone
+                fona.playToolkitTone(1, 10);
 
-    }
+                //reset variables
+                for(int i=0; i<16; i++)
+                    phone_number[i] = 0;
+                phone_number_index = 0;
+                phone_number_str = "";
 
 
-    //check for incoming calls
-    char incoming_phone_number[32] = {0};
-    if(fona.incomingCallNumber(incoming_phone_number) && incoming_call == false)
-    {
-      Serial.println(F("RING PLING!"));
-      Serial.print(F("Phone Number: "));
-      Serial.println(incoming_phone_number);
+                //setup complete
+                if(DEBUG) Serial.println("[info] STATE=IDLE. Entered idle state");
+                idle_setup_complete = true;
+            }
 
-      incoming_call = true;
-      incoming_call_timeout = millis();
+            //idle loop
+            //if incoming call, enter incoming call state
+            if(!digitalRead(PIN_FONA_RI_INTERRUPT))
+            {
+                state = INCOMINGCALL;
+                delay(10); //kind of a debounce delay, remove later
+            }
 
-      //play ring tone
-      fona.playToolkitTone(8, 60000);
-    }
-    
+            //if handset is lifted, enter dialing state 
+            if(digitalRead(PIN_HANGUP))
+            {
+                state = DIALING;
+                delay(10); //kind of a debounce delay, remove later
+            }
 
-    //incoming call timeout
-    else if (millis() > incoming_call_timeout + 20000 && incoming_call == true)
-    {
-      Serial.println(F("incoming call timed out"));
-
-      incoming_call = false;
-
-      //stop play ring tone
-      fona.playToolkitTone(8, 10);
-    }
-    
-    
-
-    //vibrate if incoming call
-    /*
-    if(incoming_call)
-    {
-      if(int(millis()/1000) % 2 == 0)
-        fona.setPWM(2000, 50);
-      else
-        fona.setPWM(2000, 0);
-    } 
-    */
-      
-  }
-
-  //mode=handset up
-  else if(!digitalRead(PIN_HANGUP) == LOW)
-  {
-    //do once
-    if(mode != 1)
-    {
-      mode = 1;
-
-      Serial.println("Handset up");
-
-      
-
-      //check for incoming calls, if true, pick up
-      if(incoming_call)
-      {
-        Serial.println("Picked up call");
-
-        //stop play ring tone
-        fona.playToolkitTone(8, 10);
-        fona.setPWM(2000, 0);
-        fona.pickUp();
-      }
-      //else, start dialing
-      else
-      {
-        Serial.println("Start dialing");
-
-        //Start playing dial tone
-        fona.playToolkitTone(1, 60000);
+            break;
         
-        dialing = true;
-      }
-      
+        case DIALING:
+            //dialing setup
+            if(!dialing_setup_complete)
+            {
+                idle_setup_complete = false;
+                calling_setup_complete = false;
+                incomingcall_setup_complete = false;
+
+                //Start playing dial tone
+                fona.playToolkitTone(1, 60000);
+
+
+                //setup complete
+                if(DEBUG) Serial.println("[info] STATE=DIALING. You are now ready to dial your friends number");
+                dialing_setup_complete = true;
+            }
+
+            //dialing loop
+            //start counting
+            
+            //pin_pulse debouncing
+            pin_pulse_state = digitalRead(PIN_PULSE);
+            if(pin_pulse_state != pin_pulse_state_prev)
+            {
+                pin_pulse_ms_last = millis();
+            }
+            pin_pulse_state_prev = pin_pulse_state;
+            
+            //if pulse pin change accepted
+            if((millis() - pin_pulse_ms_last) > DEBOUNCEDELAY)
+            {
+                if(pin_pulse_state != pulse)
+                {
+                    pulse = pin_pulse_state;
+                
+                    if(pulse)
+                        number--;
+                }
+            }
+
+            //pin_counting debounce
+            pin_counting_state = !digitalRead(PIN_COUNTING);
+            if(pin_counting_state != pin_counting_state_prev)
+            {
+                pin_counting_ms_last = millis();
+            }
+            pin_counting_state_prev = pin_counting_state;
+
+            //if counting pin change accepted
+            if((millis() - pin_counting_ms_last) > DEBOUNCEDELAY)
+            {
+                if(pin_counting_state != counting)
+                {
+                    counting = pin_counting_state;
+
+                    if(counting) //reset counter before counting
+                    {
+                        number = 10;
+                        if(DEBUG) Serial.println("[info] reading digit");
+                    }
+                    else //done counting, transfer number
+                    {
+                        phone_number[phone_number_index++] = number;
+                        last_time_counting = millis();
+
+                        if(DEBUG) 
+                        {
+                            Serial.print("[info] finished reading digit (");
+                            Serial.print(number);
+                            Serial.print("). ");
+                            Serial.print("the dialed number so far: ");
+                            for (int i = 0; i < phone_number_index; i++)
+                            {
+                                Serial.print(phone_number[i]);
+                            }
+                            Serial.println();
+                        }
+                    } 
+                }
+            }
+
+            //if done dialing, prepare and call (T_IDLE_BEFORE_CALLING milliseconds idle after dialing)
+            if(phone_number_index > 0 && millis() > last_time_counting + T_IDLE_BEFORE_CALLING)
+            {
+                if(DEBUG) Serial.println("[info] ready to call");
+
+                //stop playing dial tone
+                fona.playToolkitTone(20, 10);
+
+                //format phone number
+                //check if country code is not dialed, if not, add it
+                phone_number_str = "";
+                if(!(phone_number[0] == 0))
+                {
+                    phone_number_str += "00";               
+                    phone_number_str += default_country_code_str;
+                }
+                
+                //add rest of the dialed digits to the number string
+                for(int i = 0; i < phone_number_index; i++)
+                    phone_number_str += phone_number[i];
+
+                Serial.print("[info] Attempting to call ");
+                Serial.println(phone_number_str);
+
+                int str_len = phone_number_str.length() + 1;  
+                char phone_number_char[str_len];
+                phone_number_str.toCharArray(phone_number_char, str_len);
+             
+                if (!fona.callPhone(phone_number_char)) 
+                    Serial.println(F("[error] Call failed"));
+                else
+                {
+                    Serial.print(F("[info] Calling "));
+                    Serial.println(phone_number_str);
+                }
+
+                state = CALLING;
+                    
+            }
+
+            //if handset down, reenter idle state
+            if(!digitalRead(PIN_HANGUP))
+            {
+                state = IDLE;
+                delay(10); //kind of a debounce delay, remove later
+            }
+
+
+                
+
+            break;
+
+        case CALLING:
+            //calling setup
+            if(!calling_setup_complete)
+            {
+                idle_setup_complete = false;
+                dialing_setup_complete = false;
+                incomingcall_setup_complete = false;
+                
+                
+
+                //setup complete
+                if(DEBUG) Serial.println("[info] STATE=CALLING. Enjoy your conversation :-)))");
+                calling_setup_complete = true;
+            }
+
+            //calling loop
+
+            //get call status. 0=ready, 1=could not get status, 3=ring (incoming call), 4=in a call
+            uint8_t call_status;
+            if(millis() > call_status_ms_last + 1000)
+            {
+                call_status = fona.getCallStatus();
+                call_status_ms_last = millis();
+            }
+                
+            //if handset down, or the one at the other end of the call hangs up, enter idle state
+            if(!digitalRead(PIN_HANGUP) || call_status == 0)
+            {
+                state = IDLE;
+                delay(10); //kind of a debounce delay, remove later
+            }
+
+
+            break;
+
+        case INCOMINGCALL:
+            //incoing call setup
+            if(!incomingcall_setup_complete)
+            {
+                idle_setup_complete = false;
+                dialing_setup_complete = false;
+                calling_setup_complete = false;
+
+                //play ring tone
+                //fona.playToolkitTone(8, 60000);
+
+                //setup complete
+                if(DEBUG) Serial.println("[info] STATE=INCOMINGCALL. Someone is calling you, pleas pick up.");
+                incomingcall_setup_complete = true;
+            }
+
+            //if handset up, answer phone and enter CALLING state
+            if(digitalRead(PIN_HANGUP))
+            {
+                //answer call 
+                fona.pickUp();
+
+                state = CALLING;
+                delay(10); //kind of a debounce delay, remove later
+            }
+
+            //if caller hangs up before the phone is piched up, reenter IDLE state
+            else if(digitalRead(PIN_FONA_RI_INTERRUPT))
+            {
+                if(DEBUG) Serial.println("[info] Caller hung up.");
+
+                state = IDLE;
+                delay(10); //kind of a debounce delay, remove later
+            }
+
+            
+              
+            break;
+
+        default:
+            break;
     }
-
-    if(dialing)
-    {
-      //read phone number
-      //pin_pulse debouncing
-      pin_pulse_state = digitalRead(PIN_PULSE);
-      if(pin_pulse_state != pin_pulse_state_prev)
-      {
-        pin_pulse_ms_last = millis();
-      }
-      pin_pulse_state_prev = pin_pulse_state;
+   
+    //simulate serial com when tether is not connected
+    delay(2);
     
-      //if pulse accepted
-      if((millis() - pin_pulse_ms_last) > DEBOUNCEDELAY)
-      {
-        if(pin_pulse_state != pulse)
-        {
-          pulse = pin_pulse_state;
-    
-          if(pulse)
-            number--;
-        }
-      }
-    
-      pin_counting_state = !digitalRead(PIN_COUNTING);
-      if(pin_counting_state != pin_counting_state_prev)
-      {
-        counting = pin_counting_state;
-        if(counting) //reset counter before counting
-          number = 10;
-        else //done counting, transfer number
-        {
-          phone_number[phone_number_pointer++] = number;
-          last_time_counting = millis();
-        }
-        
-      }
-      pin_counting_state_prev = pin_counting_state;
-
-      //if done dialing (4 sec idle after dialing)
-      if(phone_number_pointer > 0 && millis() > last_time_counting + T_IDLE_BEFORE_CALLING)
-      {
-        //do once
-        if(!ready_to_call)
-        {
-          ready_to_call = true;
-          dialing = false;
-
-          //format number
-          //check if country code is not dialed, if not, add it
-          phone_number_str = "";
-          if(!(phone_number[0] == 0 && phone_number[1] == 0))
-          {
-            phone_number_str += "00";
-            phone_number_str += default_country_code_str;
-          }
-
-          for(int i = 0; i < phone_number_pointer; i++)
-            phone_number_str += phone_number[i];
-
-          //stop playing dial tone
-          fona.playToolkitTone(20, 10);
-
-          Serial.println("Calling ");
-          Serial.println(phone_number_str);
-
-          int str_len = phone_number_str.length() + 1;  
-          char phone_number_char[str_len];
-          phone_number_str.toCharArray(phone_number_char, str_len);
-
-          if (!fona.callPhone(phone_number_char)) 
-            Serial.println(F("Failed"));
-          else
-            Serial.println(F("calling!"));
-
-        }
-
-      }
-
-    }
-    
-  }
-
-  
-
-  
-
-
-
-  
-
-  
-
-
-  /*
-  Serial.print("c=");
-  Serial.print(digitalRead(pin_counting));
-  Serial.print(" p=");
-  Serial.print(digitalRead(pin_pulse));
-  Serial.print(" h=");
-  Serial.print(digitalRead(pin_hangup));
-  Serial.print(" C=");
-  Serial.print(counting);
-  Serial.print(" P=");
-  Serial.print(pulse);
-  Serial.print(" n=");
-  Serial.print(number);
-  Serial.print(" mode=");
-  if(mode==0)
-    Serial.print("hangup");
-  else if(mode==1)
-    Serial.print("dialing");
-  else if(mode==2)
-    Serial.print("calling");
-  else
-    Serial.print("unknown");
-  
-
-  if(ready_to_call)
-  {
-    Serial.print(" calling=");
-    Serial.print(phone_number_str);
-    Serial.println("");
-  }
-  else
-  {
-    Serial.print(" N=[");
-    for(int i = 0; i < 12; i++)
-    {
-      Serial.print(phone_number[i]);
-    }
-    Serial.println("]");
-  }
-  */
-  
-  
-
-  
-
-
-
-  
- delay(1);
- 
 }
 
-void fitta()
+void test_high()
 {
-  Serial.println("FITTA");
-  incoming_call = true;
+    Serial.println("###########################TEST HIGH");
+}
+
+void test_low()
+{
+    Serial.println("###########################TEST LOW");
 }
