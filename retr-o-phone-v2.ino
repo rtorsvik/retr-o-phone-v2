@@ -16,7 +16,7 @@
 
 //definitions
 //____________________________________________________________________________________________________
-char SIM_PIN[4] = "1234"; //enter your SIM card pin number here
+char SIM_PIN[4] = "7515"; //enter your SIM card pin number here
 String default_country_code_str = "47"; //NOR
 
 #define DEBOUNCEDELAY 10 //[ms]
