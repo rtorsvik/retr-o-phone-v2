@@ -3,7 +3,7 @@
  * Follow the instruction on https://github.com/rtorsvik/retr-o-phone-v2 to build your own
  * And, remember to put in your SIM card PIN number, and your default country code in the //definitions below
  * 
- * Per today, buzzer functionality is not implemented
+ * Per today, buzzer and battery indicator functionality is not implemented
  * 
  * @author: Rein Åsmund Torsvik, 2021-05-09
  */
