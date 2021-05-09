@@ -36,7 +36,7 @@ Connect everything as shown in the schematic
 Download this project from github and upload it to your FONA
 
 You will also have to set your SIM card PIN number, and the default country code in the source code, here:
-![simpin](/doc/simpin.png)
+![simpin](/doc/simpin.PNG)
 
 Connect to power, and call one of your friends to ask if they would like to hang out, like you used to do after school, 20 years ago.
 
